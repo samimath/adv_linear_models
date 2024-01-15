@@ -2,8 +2,10 @@
 ## basic review of linear models and R 
 require(datasets) ## R library for built-in datasets 
 require(stats) ## R statistical functions
+require(visreg) ## Visualization of regression models
 require(broom) ## Data wrangling tool 
 require(dplyr) ## Data wrangling tool 
+require(rgl)
 
 ## let's try out one of the datasets, trees
 ## It collects the Diameter, Height and Volume for Black Cherry Trees
@@ -25,3 +27,7 @@ fitted(fit) ## estimated response (yhat)
 predict(object = fit,
         newdata = data.frame(x1=9.0,x2=68.1)) ## predicted response
 
+## visualization residuals:
+
+visreg(fit, 'x1')
+visreg(fit, 'x2')
