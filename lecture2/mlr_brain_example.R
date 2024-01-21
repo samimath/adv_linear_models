@@ -62,10 +62,12 @@ Fstar <- round(((RSS1-RSS2)/(p1-p2))/(RSS1/(nrow(data)-p1)),3)
 
 ## theoretically, Fstar should follow the F distribution 
 ## with degrees of freedom: p1-p2, n-p1
-## P(F > Fstar) = 1- P(F\leq Fstar)
+## P(F > Fstar) = 1- P(F <= Fstar)
 p_val <- 1 - pf(Fstar,p1-p2,nrow(data)-p1)
 
 
 ## model evaluation by AIC
 
 AIC(fit,fit2)
+
+
