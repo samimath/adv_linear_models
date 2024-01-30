@@ -140,6 +140,143 @@ print(exp(beta))
 
 This tells us that a unit increase in , for example, cigarettes smoked per day, increases the odds of heart disease by a factor of $e^{\beta_1}$ or 1.023, which is again about an 2.3% increase.
 
+
+
+### Model inference 
+
 *Null deviance:* A low null deviance implies that the data can be modeled using only the intercept (without other predictors). If the null deviance is low, we should consider using fewer features for modeling the data.
 
 *Residual deviance:* A low residual deviance implies that the model we have trained is appropriate.
+
+
+There are several ways to compare models. We can use the deviance as a metric with the following example
+
+```{r}
+D0<-1781.2
+D1<-1749.0
+dstar <- D0-D1
+p_val<-1-pchisq(dstar,2)
+print(p_val)
+
+```
+
+We can also test the individual predictors by fitting models that drop these predictors and compute the difference in the deviance observed, here is an example testing the importance of the variance `height` 
+
+```{r}
+
+glmodc <- glm(chd ~ cigs, family = binomial, wcgs)
+anova(glmodc,glmod, test="Chi")
+
+```
+
+We can also test all predictors of the model in similar fashion using the `dropl` function 
+
+```{r}
+drop1(glmod,test="Chi")
+
+```
+
+
+### Model testing by confidence interval
+
+Wald-type : assumes the asymptotic distribution of $\hat{\beta}/se(\hat{\beta})$ follows the standard normal distribution
+
+Profile likelihood: uses likelihood function to establish confidence interval 
+
+Example for our dataset here:
+
+Recalling model output:
+```{r}
+
+summary(glmod)$coefficients
+
+```
+
+We can use the information above (Estimate, Std. Error) to construct a typical 95% confidence interval using `confint`. Take the coefficient for `height` as an example:
+
+```{r}
+
+0.025 + c(-1,1) * 1.96 * 0.0263
+```
+
+Alternatively, we can use the profile likelihood method:
+
+```{r}
+confint(glmod)
+
+```
+
+
+### Model diagnostics 
+
+Two ways of computing model residuals:
+
+```{r}
+linpred <- predict(glmod)
+predprob <- predict(glmod, type="response")
+
+print(head(linpred))
+print(head(predprob))
+print(head(ilogit(linpred)))
+```
+
+Notice that the first one (linear predictions) are the values of  $\eta_i = \beta_0 + \beta_1X_{1i}  + \beta_2 X_{2i}$, while the second one is $h(\eta_i), h = g^{-1}$. In this case, $g = logit()$ so $h$ is the inverse of the logit function (in the Faraway package that is `ilogit`)
+
+Let's take a look at the raw residuals $y_i - \hat{p}_i$
+
+```{r}
+
+rawres <- wcgs$y - predprob
+
+print(head(rawres))
+
+```
+
+Alternatively, can also get them using the `residuals` function
+
+```{r}
+
+print(head(residuals(glmod, type="response")))
+
+```
+
+Let's take a first look at the residual plots:
+
+```{r}
+
+plot(rawres ~ linpred, xlab="linear predictor", ylab="residuals")
+```
+
+
+
+We now construct a more useful residuals plot by grouping the residuals into bins where the bins are based on similar predictor values. 
+
+The choice of the number of bins depends on the size of the dataset. 
+
+We choose 100 bins so that we have roughly 30 observations per bin. Some effort is required to construct this plot. 
+
+The `dplyr` package of Wickham and Francois (2015) is useful for this task. First, we add the
+residuals and linear predictor into the data frame.
+
+
+```{r}
+
+library(dplyr)
+wcgs <- mutate(wcgs, residuals=residuals(glmod), linpred=predict(glmod))
+
+## create bins for the values:
+
+gdf <- group_by(wcgs, cut(linpred, breaks=unique(quantile(linpred,(1:100)/101))))
+
+## summarize by mean of the residuals and predictors
+diagdf <- summarise(gdf, residuals=mean(residuals), linpred=mean(linpred))
+
+plot(residuals ~ linpred, diagdf, xlab="linear predictor")
+```
+
+
+Detecting unusual cases via hat values:
+
+```{r}
+halfnorm(hatvalues(glmod))
+```

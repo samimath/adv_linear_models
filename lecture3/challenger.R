@@ -25,6 +25,8 @@ plot(damage/6 ~ temp, orings,
 lmod <- lm(damage/6 ~ temp, orings)
 abline(lmod)
 
+summary(lmod)
+
 ## what are some issues that may arise?
 
 ## 1. predicted values outside of the range of probability
