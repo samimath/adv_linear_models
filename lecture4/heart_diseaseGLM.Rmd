@@ -6,9 +6,10 @@ output: pdf_document
 ---
 
 ```{r setup, include=FALSE}
-knitr::opts_chunk$set(echo = TRUE,message = FALSE, out.width="70%",fig.pos='center')
+knitr::opts_chunk$set(echo = TRUE,message = FALSE, fig.pos='center')
 library(faraway)
 library(ggplot2)
+library(dplyr)
 ```
 
 ## Heart disease example 
@@ -19,6 +20,7 @@ We load a subset of this data (cigarette use, height, and heart disease) from th
 
 ```{r}
 data(wcgs, package="faraway")
+wcgs <- na.omit(wcgs)
 summary(wcgs[,c("chd","height","cigs")])
 ```
 
@@ -212,7 +214,11 @@ confint(glmod)
 Two ways of computing model residuals:
 
 ```{r}
+
+## predictions on linear scale (Real line)
 linpred <- predict(glmod)
+
+## predictions on probability scale (0,1)
 predprob <- predict(glmod, type="response")
 
 print(head(linpred))
@@ -277,6 +283,124 @@ plot(residuals ~ linpred, diagdf, xlab="linear predictor")
 
 Detecting unusual cases via hat values:
 
+Here's an example using half-normal plot
+
 ```{r}
 halfnorm(hatvalues(glmod))
+```
+
+### Model selection
+
+There are a few different methods for model selection. One common approach is the backward algorithm, which can be implemented using the `drop1` function 
+
+```{r}
+## create a new variable called bmi:
+wcgs$bmi <- with(wcgs, 703*wcgs$weight/(wcgs$height^2))
+glmod1 <- glm(chd ~ age + height + weight +bmi 
+              + sdp + dbp + chol +dibep +
+                cigs +arcus, family=binomial, wcgs) 
+
+
+drop1(glmod1,test = 'Chisq')
+
+## drop height, bmi, weight, dbp, arcus
+glmod2 <- glm(chd ~ age  + sdp + chol +dibep + cigs , 
+              family=binomial, wcgs) 
+drop1(glmod2,test = 'Chisq')
+
+### try subset selection using AIC:
+
+glmod3<-step(glmod1,trace = 0)
+summary(glmod3)
+
+
+```
+
+
+### Checking model fit 
+
+
+
+#### Hosmer-Lemeshow method (Binning)
+
+
+```{r}
+
+
+## create a new column in the dataset called predprob 
+## which is the output of the logistic regression model
+wcgs <- mutate(wcgs, linpred = fitted(glmod3), predprob=predict(glmod3,type="response"))
+## create bins and group the model ouptut by them
+gdf <- group_by(wcgs, cut(linpred, breaks=unique(quantile(linpred,(1:100)/101))))
+hldf <- summarise(gdf, y=sum(y), 
+                  ppred=mean(predprob), 
+                  count=n())%>%
+  mutate(se.fit=sqrt(ppred*(1-ppred)/count))
+
+ggplot(hldf,aes(x=ppred,
+                y=y/count,
+                ymin=y/count-2*se.fit,
+                ymax=y/count+2*se.fit))+geom_point()+
+  geom_linerange(color=grey(0.75))+
+  geom_abline(intercept=0,slope=1)+xlab("Predicted Probability")+ylab("Observed Proportion")+ggtitle('bin # = 100')
+
+```
+
+```{r}
+### H-L statistic and degrees of freedom:
+
+hlstat <- with(hldf, 
+               sum( (y-count*ppred)^2/(count*ppred*(1-ppred))))
+c(hlstat, nrow(hldf))
+
+## p-value of the observed H-L stat:
+
+1-pchisq(63.212, 56-1)
+```
+
+#### Contingency table 
+
+
+```{r}
+
+wcgs <- mutate(wcgs, 
+               predout = ifelse(predprob < 0.5, "no", "yes"))
+xtabs( ~ chd + predout, wcgs)
+```
+
+
+#### ROC curve 
+
+Testing an array of threshold for the predicted probability of heart disease, then see how it changes the true negative (specificity) vs true positive (sensitivity)
+
+```{r}
+thresh <- seq(0.01,0.5,0.01)
+Sensitivity <- numeric(length(thresh))
+Specificity <- numeric(length(thresh))
+for(j in seq(along=thresh)){
+  pp <- ifelse(wcgs$predprob < thresh[j],
+               "no","yes")
+  xx <- xtabs( ~ chd + pp, wcgs)
+  Specificity[j] <- xx[1,1]/(xx[1,1]+xx[1,2])
+       Sensitivity[j] <- xx[2,2]/(xx[2,1]+xx[2,2])
+}
+
+```
+
+```{r}
+
+matplot(thresh,cbind(Sensitivity,Specificity),
+        type="l",xlab="Threshold for p",
+        ylab="Proportion",lty=1:2, 
+        main ='Sensitivity and Specificity vs threshold')
+legend(0.25,0.6,lty=1:2,
+       col = c('black','red'),
+       legend = c('Sensitivity','Specificity'))
+
+
+plot(1-Specificity,Sensitivity,type="l", 
+     col='blue',
+     main = 'Receiver Operating Characteristic (ROC) Curve' )
+abline(0,1,lty=2)
+
 ```
