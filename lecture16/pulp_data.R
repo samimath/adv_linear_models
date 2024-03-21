@@ -57,8 +57,10 @@ for(i in 1:sim_num){
                pulp, REML=FALSE) ## full model
   lrstat[i] <- as.numeric(2*(logLik(balt)-logLik(bnull))) ## test stat
 }
-## find the proportion of times the LRT returns significant results
-sig_prop <- mean(lrstat < 0.00001)
+## find the proportion of times the LRT test stat is close to zero
+zero_prop <- mean(lrstat < 0.0001)
+p_val <- mean(lrstat > 2.58)
+
 
 
 ## For curiosity, how does the result change as number of simulation changes?
@@ -77,13 +79,21 @@ LRT_bootstrap<-function(sim_num){
     lrstat[i] <- as.numeric(2*(logLik(balt)-logLik(bnull))) ## test stat
   }
   
-  sig_prop <- mean(lrstat < 0.00001)
+  zero_prop <- mean(lrstat < 0.00001)
+  p_val <- mean(lrstat > 2.586)
   
-return(sig_prop)
+return(rbind(zero_prop,p_val))
 }
 
-sim_list<-c(3,50,100,500,1000)
-sig_prop<- unlist(lapply(sim_list, function(v){LRT_bootstrap(v)}))
-plot(sim_list,sig_prop,type='b',lwd=3,col='b')
+sim_list<-c(3,50,100,500,1000,5000)
+output <- unlist(lapply(sim_list, function(v){LRT_bootstrap(v)}))
+
+plot(sim_list,output[seq(1, length(output), 2)],
+     type='b',lwd=3,col='blue', main = '% of 0 LRT',
+     xlab = '# of simulations', ylab = 'value')
+plot(sim_list,output[seq(2, length(output), 2)],
+     type='b',lwd=3,col='purple', main =  'estimated p-val',
+     xlab = '# of simulations', ylab = 'value')
 
 
+## pl
