@@ -96,4 +96,17 @@ plot(sim_list,output[seq(2, length(output), 2)],
      xlab = '# of simulations', ylab = 'value')
 
 
-## pl
+## comparing random effects estimate vs fixed effects 
+
+mmod <- lmer(bright ~ 1+(1|operator), pulp) # random effects model
+ranef(mmod)$operator
+## using this to 're-code' the operator levels 
+## so they are not just showing the marginal effects
+options(contrasts=c("contr.sum", "contr.poly"))
+lmod <- aov(bright ~ operator, pulp) # fixed effects model
+unique(predict(lmod,pulp)-mean(pulp$bright))
+
+
+vc  <-VarCorr(mmod)  # extract variance component estimates
+varcomps<-c(unlist( lapply(vc, diag) ),  attr(vc,"sc")^2)
+varcomps[1]/ (varcomps[1] + varcomps[2]/5) # shrinkage factor
