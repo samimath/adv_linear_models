@@ -1,0 +1,270 @@
+---
+title: "R session with GAM"
+author: "Math 4392 Lecture 24"
+date: "4/17/2024"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(ggplot2)
+library(ggpubr)
+library(effects)
+library(mgcv)
+```
+
+## Description
+
+In this lecture, we will go through a more detailed use case around Ozone data that demonstrate how to model data using generalized additive models
+
+## Ozone data:
+
+Continuing from last lecture, we had started an example with modeling O3 level as a function of temperature, ibh, and ibt. We compared a few different types of models:
+
+1) simple linear model
+
+2) additive model with spline functions 
+
+3) a mix of both 
+
+In the initial analysis, we found that using a non-parametric smoothers for each of the predictor variables seem to provide a better fit, as well as reasonable interpretation. Below is the code :
+
+```{r}
+
+## gam example on ozone data
+data("ozone")
+
+## visualize the data:
+
+data(ozone, package="faraway")
+
+p1<-ggplot(ozone, aes(x=temp, y=O3)) + geom_point(size=1) + geom_smooth()+theme_bw()
+p2<-ggplot(ozone, aes(x=ibh, y=O3)) + geom_point(size=1) + geom_smooth() + 
+  theme(axis.text.x = element_text(angle = 90))+theme_bw()
+p3<-ggplot(ozone, aes(x=ibt, y=O3)) + geom_point(size=1) + geom_smooth()+theme_bw()
+
+ggarrange(p1,p2,p3,nrow = 1)
+```
+
+
+First try, let's fit a linear model and see how it works:
+
+```{r}
+lmod <- lm(O3 ~temp +ibh + ibt, ozone)
+```
+
+Using the effects package, we can visualize individual relationships  between the predictors and the response via their regression coefficients
+
+```{r}
+par(mfrow = c(1,3))
+plot(Effect("temp", lmod, partial.residuals=TRUE))
+plot(Effect("ibh", lmod, partial.residuals=TRUE))
+plot(Effect("ibt", lmod, partial.residuals=TRUE))
+
+```
+
+Using mgcv, we can try fitting additive models made up of spine functions: 
+
+```{r}
+ammgcv <- gam(O3 ~ s(temp)+s(ibh)+s(ibt),data=ozone)
+summary(ammgcv)
+
+```
+
+Let's take a look at the transformations used:
+```{r}
+par(mfrow = c(1,3))
+plot(ammgcv, residuals=TRUE, select=1)
+plot(ammgcv, residuals=TRUE, select=2)
+plot(ammgcv, residuals=TRUE, select=3)
+```
+
+Consider a mix of linear and smoothing functions :
+
+```{r}
+am1 <- gam(O3 ~ s(temp)+s(ibh),data=ozone)
+am2 <- gam(O3 ~ temp+s(ibh),data=ozone)
+anova(am2,am1,test="F")
+
+```
+
+From the ANOVA, we can see that the approximate p-value indicates a change in temperate trend is significant.
+
+
+## Introductin bivariate smoothing
+
+As a variation of additive models, we can also add terms that involve multivariate smoothing, this can be handled pretty well by the `mgcv` package. 
+
+Suppose we suspect there is an interaction between the variables `temp` and `ibh`. 
+
+One thing to note in here is that, the degree of smoothing will depend on the scale of the variables. In our example, temperature and inverse base height are measured in different scales, as can be seen by the following summaries:
+
+```{r}
+summary(ozone$temp)
+summary(ozone$ibh)
+
+```
+
+These two variables are known as `anisotropic`, meaning the covariates are not naturally on the same scale. In `mgcv`, this can be modeled using the `tensor product` smooth, or `te()` function.
+
+Essentially, tensor product smooth provides more consistent result for bivariate smooths irrespective of the relative scale of the covariates. Here's an example:
+
+```{r}
+amint <- gam(O3 ~ te(temp,ibh)+s(ibt),data=ozone)
+summary(amint)
+
+ozone$ibh100 <- ozone$ibh/100
+amint2 <- gam(O3 ~ te(temp,ibh100)+s(ibt),data=ozone)
+summary(amint2)
+```
+
+
+Now, what happens if we tried to fit the same data using the `isotropic` smooth, i.e. `s()` for both `ibh` and `ibh10`?
+
+
+```{r}
+amint3 <- gam(O3 ~ s(temp,ibh)+s(ibt),data=ozone)
+summary(amint3)
+
+
+amint4 <- gam(O3 ~ s(temp,ibh100)+s(ibt),data=ozone)
+summary(amint4)
+```
+
+
+## Model comparison, inference and diagnostics:
+
+Now let's compare between additive models with bivarate smooth and univariate smooth to test the significance of the interaction:
+
+```{r}
+anova(ammgcv,amint,test="F")
+```
+
+Turns out the interaction term is not significant, but just to confirm that with some visual evidence, we can also look at the contour plot of the bivariate smooth:
+
+```{r}
+plot(amint, select=1)
+vis.gam(amint,theta=-45)
+
+```
+
+
+Just like linear models, we can also use additive models to predict new values with standard error. Below is one example:
+
+```{r}
+predict(ammgcv,
+        data.frame(temp = 60,ibh=200,ibt = 100),
+        se = T)
+
+```
+
+
+Some usual diagnostics:
+
+(note `predict()` and `fitted()` do the same thing here)
+
+```{r}
+plot(residuals(ammgcv)~fitted(ammgcv),
+     xlab="Predicted",ylab=" Residuals")
+abline(h=0)
+qqnorm(residuals(ammgcv),main="")
+qqline(residuals(ammgcv))
+
+```
+
+
+## Generalized additive models
+
+Recall in GLM, we have 
+\[ \eta = X\beta = \beta_0 + \sum_{j=1}^{p}\beta_jX_j, E(Y) = \mu, g(\mu) = \eta, \text{and } Var(Y) \propto V(\mu)\]
+
+In GAM, this approach is similarly defined, we simply replace the linear predictor, $\eta = X\beta$ with
+\[\eta = \beta_0 + \sum_{j=1}^{p}f_j(X_j)\]
+
+
+In the Ozone data, if we look at the histogram of the response variable `O3` , we can see that it has a pretty skewed distribution, which can potentially be modeled as a Poisson random variable:
+
+```{r}
+hist(ozone$O3)
+
+```
+
+This can be implemented using the `gam` function by specifiying the `family` to be Poisson:
+
+```{r}
+
+gammgcv <- gam(O3 ~ s(temp)+s(ibh)+s(ibt),
+               family=poisson,  
+               scale=-1, ## dispersion parameter is unknown
+               data=ozone) 
+
+summary(gammgcv)
+```
+
+
+Let's take a look at the effects for each of the transformed variables. Note in this case, we are actually looking at $log(Y)$ because the link function for Poisson is `log`:
+
+```{r}
+
+plot(gammgcv, residuals=TRUE, select=1,
+     ylim = c(-1.5,1.5))
+plot(gammgcv, residuals=TRUE, select=2,
+     ylim = c(-1.5,1.5))
+plot(gammgcv, residuals=TRUE, select=3,
+     ylim = c(-1.5,1.5))
+
+```
+
+The effects producde by the GAM follow similar pattern as before.
+
+
+## Alternating conditional expectations
+
+ACE are a model fitting technique that is applicable to the case when we have a `tranform-both-sides` (TBS) model, i.e.
+
+\[ \theta(y) = \alpha + \sum_{j=1}^{p}f_j(X_j)\]
+
+which is designed to minimize
+\[\sum_{i}(\theta(y_i)-f_j(x_{ij}))^2 \]
+
+In R, we can implement the ACE model using the package `acepack`. Let's try this on the ozone example:
+
+```{r}
+library(acepack)
+x <-ozone[,c('temp','ibh','ibt')]
+acefit <- ace(x,ozone$O3)
+```
+
+
+The `ace` function returns two components: `ty` and `tx`. `ty` is the same as $\theta(y$` or the transformed response variable, while `tx` is the matrix whose columns contain the function terms $f_j(x_j)$
+
+We can check how well the model fits using the following (since the `ace` function does not yet have a very nice set of model summary available):
+
+```{r}
+summary(lm(ty~tx-1, acefit))
+
+```
+
+We know the intercept is zero so we exclude that in our check. The above summary indicates a good fit.
+
+
+We can also look at what the transformation looks like by plotting the following:
+
+```{r}
+
+plot(ozone$O3,acefit$ty, 
+     xlab = 'y', ylab = 'theta(y)')
+
+plot(x[,1],acefit$tx[,1],xlab="temp",ylab="f(temp)")
+plot(x[,2],acefit$tx[,2],xlab="ibh",ylab="f(ibh)")
+plot(x[,3],acefit$tx[,3],xlab="ibt",ylab="f(ibt)")
+```
+
+
+Model diagnostics for the ACE model:
+
+```{r}
+ace_summary<-lm(lm(ty~tx-1, acefit))
+plot(ace_summary, which =1)
+plot(ace_summary, which =3)
+```
